@@ -37,8 +37,10 @@ const corsOptions = {
   origin: [
     'http://localhost:3000', 
     'http://127.0.0.1:3000',
+    
+    'https://hr-taxi-frontend.vercel.app',
     'https://hrtaxifrontend.onrender.com',  
-    'https://www.hrtaxifrontend.onrender.com'  
+      
   ],
   methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS', 'PATCH'],
   allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With', 'Accept', 'Cache-Control', 'Pragma', 'Expires'],
