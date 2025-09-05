@@ -1,5 +1,7 @@
 const Gallery = require('../models/Gallery');
 const cloudinary = require('cloudinary').v2;
+const fs = require('fs');
+const path = require('path');
 
 // @desc    Get all gallery images
 // @route   GET /api/gallery
@@ -42,63 +44,34 @@ exports.getGalleryImages = async (req, res) => {
 // @route   POST /api/gallery
 // @access  Private/Admin
 exports.uploadGalleryImage = async (req, res) => {
-  console.log('=== UPLOAD REQUEST RECEIVED ===');
-  console.log('Request body:', req.body);
-  console.log('Request files:', req.files);
-  
-  let result;
-  
   try {
-    if (!req.files || !req.files.image) {
-      console.error('No image file found in request');
+    console.log('Upload request received. File:', req.file);
+    console.log('Request body:', req.body);
+
+    if (!req.file) {
+      console.error('No file in request');
       return res.status(400).json({
         success: false,
-        message: 'Please upload an image file',
-        receivedFiles: req.files ? Object.keys(req.files) : 'No files received'
+        message: 'Please upload an image file'
       });
     }
 
-    const file = req.files.image;
-    console.log('Processing file:', {
-      name: file.name,
-      size: file.size,
-      mimetype: file.mimetype,
-      tempFilePath: file.tempFilePath ? 'exists' : 'missing',
-      truncated: file.truncated
-    });
-
-    // Validate file type
-    const allowedTypes = ['image/jpeg', 'image/png', 'image/gif'];
-    if (!allowedTypes.includes(file.mimetype)) {
-      return res.status(400).json({
-        success: false,
-        message: 'Invalid file type. Only JPG, PNG, and GIF are allowed.'
-      });
-    }
-    
-    // Check if temp file exists
-    const fs = require('fs');
-    if (!file.tempFilePath || !fs.existsSync(file.tempFilePath)) {
-      console.error('Temporary file not found at:', file.tempFilePath);
-      return res.status(400).json({
-        success: false,
-        message: 'Temporary file not found. Please try again.'
-      });
-    }
-    
-    // Upload to Cloudinary using temporary file path
-    result = await new Promise((resolve, reject) => {
+    // Upload to Cloudinary
+    const result = await new Promise((resolve, reject) => {
       cloudinary.uploader.upload(
-        file.tempFilePath,
+        req.file.path,
         {
           folder: 'gallery',
-          allowed_formats: ['jpg', 'jpeg', 'png', 'gif'],
-          transformation: [{ width: 1200, height: 800, crop: 'limit' }]
+          resource_type: 'image',
+          transformation: [
+            { width: 1200, crop: 'limit' },
+            { quality: 'auto:good' }
+          ]
         },
         (error, result) => {
           if (error) {
             console.error('Cloudinary upload error:', error);
-            return reject(error);
+            return reject(new Error('Failed to upload image to Cloudinary'));
           }
           resolve(result);
         }
@@ -107,44 +80,41 @@ exports.uploadGalleryImage = async (req, res) => {
 
     // Parse form data
     const { title = '', description = '', category = 'tours', isFeatured = 'false' } = req.body;
-    
-    console.log('Creating gallery entry with:', {
-      title,
-      description,
-      category,
-      isFeatured,
-      imageUrl: result.secure_url
-    });
-    
+
+    // Create gallery entry
     const galleryImage = await Gallery.create({
       title,
       description,
-      category: category,
+      category,
       isFeatured: isFeatured === 'true',
       image: result.secure_url,
       imagePublicId: result.public_id
+    });
+
+    // Clean up the temporary file
+    fs.unlink(req.file.path, (err) => {
+      if (err) console.error('Error deleting temporary file:', err);
     });
 
     res.status(201).json({
       success: true,
       data: galleryImage
     });
+
   } catch (error) {
-    console.error('Error uploading image:', error);
+    console.error('Error in uploadGalleryImage:', error);
     
-    // Clean up uploaded file if there was an error
-    if (result?.public_id) {
-      try {
-        await cloudinary.uploader.destroy(result.public_id);
-      } catch (err) {
-        console.error('Error cleaning up image from Cloudinary:', err);
-      }
+    // Clean up the temporary file if it exists
+    if (req.file?.path) {
+      fs.unlink(req.file.path, (err) => {
+        if (err) console.error('Error cleaning up temporary file:', err);
+      });
     }
-    
+
     res.status(500).json({
       success: false,
-      message: 'Server Error',
-      error: error.message
+      message: error.message || 'Server error during image upload',
+      error: process.env.NODE_ENV === 'development' ? error.message : undefined
     });
   }
 };
