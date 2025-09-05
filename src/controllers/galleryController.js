@@ -45,11 +45,7 @@ exports.getGalleryImages = async (req, res) => {
 // @access  Private/Admin
 exports.uploadGalleryImage = async (req, res) => {
   try {
-    console.log('Upload request received. File:', req.file);
-    console.log('Request body:', req.body);
-
     if (!req.file) {
-      console.error('No file in request');
       return res.status(400).json({
         success: false,
         message: 'Please upload an image file'
@@ -70,7 +66,6 @@ exports.uploadGalleryImage = async (req, res) => {
         },
         (error, result) => {
           if (error) {
-            console.error('Cloudinary upload error:', error);
             return reject(new Error('Failed to upload image to Cloudinary'));
           }
           resolve(result);
@@ -93,7 +88,7 @@ exports.uploadGalleryImage = async (req, res) => {
 
     // Clean up the temporary file
     fs.unlink(req.file.path, (err) => {
-      if (err) console.error('Error deleting temporary file:', err);
+      if (err) {}
     });
 
     res.status(201).json({
@@ -102,18 +97,14 @@ exports.uploadGalleryImage = async (req, res) => {
     });
 
   } catch (error) {
-    console.error('Error in uploadGalleryImage:', error);
-    
     // Clean up the temporary file if it exists
     if (req.file?.path) {
-      fs.unlink(req.file.path, (err) => {
-        if (err) console.error('Error cleaning up temporary file:', err);
-      });
+      fs.unlink(req.file.path, () => {});
     }
 
     res.status(500).json({
       success: false,
-      message: error.message || 'Server error during image upload',
+      message: 'Server error during image upload',
       error: process.env.NODE_ENV === 'development' ? error.message : undefined
     });
   }
@@ -124,39 +115,35 @@ exports.uploadGalleryImage = async (req, res) => {
 // @access  Private/Admin
 exports.deleteGalleryImage = async (req, res) => {
   try {
-    const galleryImage = await Gallery.findById(req.params.id);
+    const image = await Gallery.findById(req.params.id);
     
-    if (!galleryImage) {
+    if (!image) {
       return res.status(404).json({
         success: false,
         message: 'Image not found'
       });
     }
-    
-    // Delete image from Cloudinary
-    if (galleryImage.imagePublicId) {
+
+    // Delete from Cloudinary if public ID exists
+    if (image.imagePublicId) {
       try {
-        await cloudinary.uploader.destroy(galleryImage.imagePublicId);
-      } catch (err) {
-        console.error('Error deleting image from Cloudinary:', err);
-        // Continue with deletion even if image deletion fails
+        await cloudinary.uploader.destroy(image.imagePublicId);
+      } catch (cloudinaryError) {
+        // Continue with database deletion even if Cloudinary fails
       }
     }
-    
-    await Gallery.deleteOne({ _id: galleryImage._id });
-    // OR use findByIdAndDelete
-    // await Gallery.findByIdAndDelete(req.params.id);
-    
+
+    // Delete from database
+    await Gallery.findByIdAndDelete(req.params.id);
+
     res.status(200).json({
       success: true,
       data: {}
     });
   } catch (error) {
-    console.error('Error deleting gallery image:', error);
-    
     res.status(500).json({
       success: false,
-      message: 'Server Error',
+      message: 'Error deleting image',
       error: error.message
     });
   }
